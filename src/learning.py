@@ -41,11 +41,11 @@ class Feature(object):
 			#print sentence + "\n\n"
 			values = self.extract(sentence)
 			all_values.append(values)
-		return all_values
+		return scipy.sparse.coo_matrix(all_values)
 
 class BagOfWords(Feature):
 	def __init__(self):
-		self._vectorizer = TfidfVectorizer(ngram_range=(1,1))
+		self._vectorizer = TfidfVectorizer(ngram_range=(1,2))
 		self._initialized = False
 
 	def extract_all(self, sentences):
@@ -55,8 +55,8 @@ class BagOfWords(Feature):
 			self._initialized = True
 		else:
 			matrix = self._vectorizer.transform(sentences)
-		print matrix.todense()
-		return matrix.todense()
+		#print matrix.todense()
+		return matrix
 
 
 class CapFeature(Feature):
@@ -66,14 +66,14 @@ class CapFeature(Feature):
 	def extract(self, line):
 		num_caps = len(re.findall(r'[A-Z]{3}[A-Z]*', line))
 		num_lower = len(re.findall(r'[a-z]', line))
-		return float(num_caps)
+		return [float(num_caps)]
 
 class RegexFeature(Feature):
 	def __init__(self, regex):
 		self._regex = regex
 
 	def extract(self, line):
-		return len(re.findall(self._regex, line))
+		return [len(re.findall(self._regex, line))]
 
 class WordFeature(Feature):
 
@@ -101,6 +101,7 @@ class WordFeature(Feature):
 			return [1] if count > 0 else [0]
 		else:
 			return [10*(count / len(words))]
+
 class WordPosition(Feature):
 	def __init__(self, word, position=0):
 		self._word = word
@@ -110,8 +111,8 @@ class WordPosition(Feature):
 		words = self.tokenize(line.lower())
 		if self._word in words:
 			pos = words.index(self._word)
-			return (1.0 / (1 + abs(self._position - pos)))
-		return 0.0
+			return [(1.0 / (1 + abs(self._position - pos)))]
+		return [0.0]
 
 
 
@@ -124,13 +125,13 @@ def get_precision_recall(sentences, labels, predictions):
 			if prediction == 1:
 				tp += 1
 			else:
-				#print "FN: " + sentences[i]
+				print "FN: " + sentences[i]
 				fn += 1
 		else:
 			if prediction == 0:
 				tn += 1
 			else:
-				#print "FP: " + sentences[i]
+				print "FP: " + sentences[i]
 				fp += 1
 	precision = float(tp) / (tp + fp)
 	recall = float(tp) / (tp + fn)
@@ -191,8 +192,9 @@ def get_feature_values(sentences, features):
 		values = feature.extract_all(sentences)
 		all_values.append(values)
 
-	input_values = tuple(all_values)
-	matrix = numpy.column_stack(input_values)
+	matrix = scipy.sparse.hstack(all_values)
+	#input_values = tuple(all_values)
+	#matrix = numpy.column_stack(input_values)
 	return matrix
 
 
@@ -206,7 +208,7 @@ def get_features():
 	exclaim = RegexFeature(r'!!+')
 	bag_words = BagOfWords()
 
-	feats.extend([you, word_pos, badwords, cap, you_are, bag_words])
+	feats.extend([bag_words, exclaim, badwords])
 	return feats
 
 
@@ -219,11 +221,11 @@ print "-------------Got all train features - start training-----------------"
 
 #print matrix[0]
 #print train_labels
-clf = svm.SVC()
+clf = svm.SVC(kernel='linear')
 clf.fit(matrix, train_labels) 
 
 SVC(C=1.0, cache_size=200, class_weight=None, coef0=0.0, degree=3,
-gamma=0.0, kernel='rbf', max_iter=-1, probability=False, shrinking=True,
+gamma=0.0, kernel='linear', max_iter=-1, probability=False, shrinking=True,
 tol=0.001, verbose=False)
 
 print "------------------------Finished training-----------------"
