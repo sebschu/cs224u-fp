@@ -13,6 +13,8 @@ from collections import defaultdict
 import csv
 import re
 
+RESULTS_FILE = "results.txt"
+
 class Feature(object):
 	tokens_cache = dict()
 
@@ -21,7 +23,7 @@ class Feature(object):
 
 	def preprocess(self, sentence):
 		sentence = re.sub(r'"', "", sentence)
-		sentence = re.sub(r'(\w)(\1\1+)', r'\1', sentence)
+		sentence = re.sub(r'(\w)(\1\1\1+)', r'\1', sentence)
 		sentence = re.sub(r'_', " ", sentence)
 		sentence = re.sub(r'@', "a", sentence)
 		#sentence = re.sub(r'\$', "s", sentence)
@@ -38,7 +40,6 @@ class Feature(object):
 		return new_sentences
 
 	def tokenize(self, sentence):
-		#print sentence
 		sentence = self.preprocess(sentence)
 		if sentence not in Feature.tokens_cache:
 			tokenizer = TreebankWordTokenizer()
@@ -48,7 +49,6 @@ class Feature(object):
 	def extract_all(self, sentences):
 		all_values = []
 		for sentence in sentences:
-			#print sentence + "\n\n"
 			values = self.extract(sentence)
 			all_values.append(values)
 		return scipy.sparse.coo_matrix(all_values)
@@ -71,6 +71,7 @@ class POSNGramsFeature(Feature):
 			for t in posTags:
 			    posSentence += "%s " % t[1]
 			posSentences.append(posSentence[:-1])
+			#print posSentences
 			
 		if not self._initialized:
 			matrix = self._vectorizer.fit_transform(posSentences)
@@ -79,6 +80,40 @@ class POSNGramsFeature(Feature):
 			matrix = self._vectorizer.transform(posSentences)
 		#print matrix.todense()
 		return matrix
+
+class WordTagBigram(Feature):
+	def __init__(self, word, N=4):
+		self._vectorizer = TfidfVectorizer(ngram_range=(1,2))
+		self._initialized = False
+		self._word = word
+		self._N = N
+
+	def extract_all(self, sentences):
+		sentences = self.preprocess_all(sentences)
+		all_phrases = []
+		for sentence in sentences:
+			phrase = ""
+			tokens = self.tokenize(sentence)
+			if self._word in tokens:
+				
+				index = tokens.index(self._word)
+				posTags = nltk.pos_tag(tokens)
+				word_tag = posTags[index]
+				if index < len(tokens) - self._N:
+					for i in range(1, self._N+1):
+						phrase += posTags[index+i][1] + " "
+					#print phrase
+					#print posTags[index+1][0] + " " + posTags[index+2][0]
+					
+			all_phrases.append(phrase)
+		if not self._initialized:
+			matrix = self._vectorizer.fit_transform(all_phrases)
+			self._initialized = True
+		else:
+			matrix = self._vectorizer.transform(all_phrases)
+		#print matrix.todense()
+		return matrix
+
 
 
 
@@ -219,12 +254,23 @@ def baseline(sentences):
 	return predictions
 
 def evaluate(sentences, predictions, labels, name):
+
+	if name == "baseline": return
 	print "------Results for " + name + " model------------"
 	precision, recall = get_precision_recall(sentences, labels, predictions)
 	print "precision: " + str(precision)
 	print "recall: " + str(recall)
 
 	F1 = (2.0 * precision * recall) / (precision + recall)
+
+	print RESULTS_FILE
+	fd = open(RESULTS_FILE, 'r+')
+	old_best = fd.readline()
+	print old_best
+	old_best_int = float(old_best)
+	if F1 >= old_best_int:
+		print "Got a new best F1 of " + str(F1)
+		fd.write(str(F1) + "\n")
 
 	print "F1: " + str(F1)
 
@@ -235,7 +281,10 @@ def run_baseline():
 
 def get_feature_values(sentences, features):
 	all_values = []
+	i = len(features)
 	for feature in features:
+		print str(i) + " features left to get"
+		i -= 1
 		values = feature.extract_all(sentences)
 		all_values.append(values)
 
@@ -261,13 +310,17 @@ def get_features():
 	bag_words = BagOfWords()
 	bag_words2 = BagOfWords(1,2,'char')
 
-	feats.extend([you, me, go_beginning, bag_words, bag_words2, exclaim, badwords])
+	word_tag = WordTagBigram("you")
+
+
+	feats.extend([you_are])
 	return feats
 
 
 run_baseline()
 features = get_features()
 train_sentences, train_labels = get_train_data()
+print "-------------Start getting train features----------------------------"
 matrix = get_feature_values(train_sentences, features)
 
 print "-------------Got all train features - start training-----------------"
