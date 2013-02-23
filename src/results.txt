@@ -1,2 +1,90 @@
-0.0
-0.421404682274
+0.698282910875
+* RegexFeature, regex=^go 
+* WordFeature
+* BagOfWords with mn=1, mx=2, analyzertype=word
+* BagOfWords with mn=1, mx=2, analyzertype=char
+
+####################################################################
+
+0.697788697789
+* RegexFeature, regex=^go 
+* WordFeature
+* BagOfWords with mn=1, mx=2, analyzertype=word
+* BagOfWords with mn=1, mx=2, analyzertype=char
+* RegexFeature, regex=!!+
+
+####################################################################
+
+0.697217675941
+* RegexFeature, regex=^go 
+* WordFeature
+* BagOfWords with mn=1, mx=2, analyzertype=word
+* BagOfWords with mn=1, mx=2, analyzertype=char
+* RegexFeature, regex=!!+
+
+####################################################################
+
+0.697217675941
+* RegexFeature, regex=^go 
+* WordFeature
+* BagOfWords with mn=1, mx=2, analyzertype=word
+* BagOfWords with mn=1, mx=2, analyzertype=char
+* RegexFeature, regex=!!+
+
+####################################################################
+
+0.697217675941
+* RegexFeature, regex=^go 
+* WordFeature
+* BagOfWords with mn=1, mx=2, analyzertype=word
+* BagOfWords with mn=1, mx=2, analyzertype=char
+* RegexFeature, regex=!!+
+
+####################################################################
+
+0.694444444444
+* RegexFeature, regex=^go 
+* BagOfWords with mn=1, mx=2, analyzertype=word
+* BagOfWords with mn=1, mx=2, analyzertype=char
+* RegexFeature, regex=!!+
+
+####################################################################
+
+0.69387755102
+* RegexFeature, regex=^go 
+* RegexFeature, regex=([Yy]?o?u a?re?|[Yy]ou\'re) 
+* BagOfWords with mn=1, mx=2, analyzertype=word
+* BagOfWords with mn=1, mx=2, analyzertype=char
+* RegexFeature, regex=!!+
+
+####################################################################
+
+0.693376941946
+* RegexFeature, regex=^go 
+* RegexFeature, regex=([Yy]?o?u a?re?|[Yy]ou\'re) 
+* BagOfWords with mn=1, mx=2, analyzertype=word
+* BagOfWords with mn=1, mx=2, analyzertype=char
+
+####################################################################
+
+0.693376941946
+* RegexFeature, regex=([Yy]?o?u a?re?|[Yy]ou\'re) 
+* BagOfWords with mn=1, mx=2, analyzertype=word
+* BagOfWords with mn=1, mx=2, analyzertype=char
+
+####################################################################
+
+0.693376941946
+* RegexFeature, regex=([Yy]?o?u a?re?|[Yy]ou\'re) 
+* BagOfWords with mn=1, mx=2, analyzertype=word
+* BagOfWords with mn=1, mx=2, analyzertype=char
+
+####################################################################
+
+0.693376941946
+* RegexFeature, regex=([Yy]?o?u a?re?|[Yy]ou\'re) 
+* BagOfWords with mn=1, mx=2, analyzertype=word
+* BagOfWords with mn=1, mx=2, analyzertype=char
+
+####################################################################
+

@@ -25,6 +25,7 @@ class Feature(object):
 		sentence = re.sub(r'"', "", sentence)
 		sentence = re.sub(r'(\w)(\1\1\1+)', r'\1', sentence)
 		sentence = re.sub(r'_', " ", sentence)
+		#sentence = re.sub(r'-', " ", sentence)
 		sentence = re.sub(r'@', "a", sentence)
 		#sentence = re.sub(r'\$', "s", sentence)
 		sentence = re.sub(r'\\+[ux][0-9a-f]+', " ", sentence)
@@ -55,6 +56,10 @@ class Feature(object):
 		
 		
 class POSNGramsFeature(Feature):
+	
+	def name(self):
+		return "POSNGrams with N=" + str(self._N)
+	
 	def __init__(self, N=2):
 		self._vectorizer = TfidfVectorizer(ngram_range=(1,2))
 		self._initialized = False
@@ -82,6 +87,10 @@ class POSNGramsFeature(Feature):
 		return matrix
 
 class WordTagBigram(Feature):
+	
+	def name(self):
+		return "WordTagBigram with N=" + str(self._N) + " and word=" + self._word
+	
 	def __init__(self, word, N=4):
 		self._vectorizer = TfidfVectorizer(ngram_range=(1,2))
 		self._initialized = False
@@ -118,9 +127,16 @@ class WordTagBigram(Feature):
 
 
 class BagOfWords(Feature):
+	
+	def name(self):
+		return "BagOfWords with mn=" + str(self._mn) + ", mx=" + str(self._mx) + ", analyzertype=" + self._analyzertype 
+		
 	def __init__(self,mn=1,mx=2,analyzertype='word'):
 		self._vectorizer = TfidfVectorizer(ngram_range=(mn,mx),analyzer=analyzertype)
 		self._initialized = False
+		self._mn = mn
+		self._mx = mx
+		self._analyzertype = analyzertype
 
 	def extract_all(self, sentences):
 		sentences = self.preprocess_all(sentences)
@@ -134,6 +150,10 @@ class BagOfWords(Feature):
 
 
 class CapFeature(Feature):
+	
+	def name(self):
+		return "CapFeature"
+	
 	def __init__(self):
 		pass
 
@@ -149,6 +169,10 @@ class CapFeature(Feature):
 		#return [float(num_caps)]
 
 class RegexFeature(Feature):
+
+	def name(self):
+		return "RegexFeature, regex=" + str(self._regex)
+	
 	def __init__(self, regex):
 		self._regex = regex
 
@@ -156,6 +180,9 @@ class RegexFeature(Feature):
 		return [len(re.findall(self._regex, line))]
 
 class WordFeature(Feature):
+
+	def name(self):
+		return "WordFeature"
 
 	def __init__(self, words, is_binary=False):
 		self._keywords = words
@@ -184,6 +211,10 @@ class WordFeature(Feature):
 
 
 class WordPosition(Feature):
+	
+	def name(self):
+		return "WordPosition"
+	
 	def __init__(self, word, position=0):
 		self._word = word
 		self._position = position
@@ -253,7 +284,7 @@ def baseline(sentences):
 			predictions.append(1)
 	return predictions
 
-def evaluate(sentences, predictions, labels, name):
+def evaluate(sentences, predictions, labels, name, features):
 
 	if name == "baseline": return
 	print "------Results for " + name + " model------------"
@@ -264,20 +295,26 @@ def evaluate(sentences, predictions, labels, name):
 	F1 = (2.0 * precision * recall) / (precision + recall)
 
 	print RESULTS_FILE
-	fd = open(RESULTS_FILE, 'r+')
-	old_best = fd.readline()
+	fd = open(RESULTS_FILE, 'r')
+	all_lines = fd.readlines()
+	old_best = all_lines[0]
 	print old_best
 	old_best_int = float(old_best)
-	if F1 >= old_best_int:
+	if F1 > old_best_int:
+		fd = open(RESULTS_FILE, 'w')
 		print "Got a new best F1 of " + str(F1)
 		fd.write(str(F1) + "\n")
-
+		for feat in features:
+			fd.write("* " + feat.name() + "\n")
+		fd.write("\n####################################################################\n\n")
+		for l in all_lines:
+			fd.write(l)
 	print "F1: " + str(F1)
 
 def run_baseline():
 	sentences, labels = get_dev_data()
 	results = baseline(sentences)
-	evaluate(sentences, results, labels, "baseline")
+	evaluate(sentences, results, labels, "baseline", [])
 
 def get_feature_values(sentences, features):
 	all_values = []
@@ -296,7 +333,7 @@ def get_feature_values(sentences, features):
 
 def get_features():
 	feats = []
-	you = WordFeature(["you", "u", "you're","you've","you'd","your","yours"])
+	you = WordFeature(["ur","you", "u", "you're","you've","you'd","your","yours"])
 	me = WordFeature(["me","my","i","mine"])
 
 	insults = WordFeature(["moron","iq","idiot","dumb","stupid","fool","dimwit","specimen"])
@@ -307,13 +344,14 @@ def get_features():
 	you_are = RegexFeature(r'([Yy]?o?u a?re?|[Yy]ou\'re) ')
 	go_beginning = RegexFeature(r'^go ')
 	exclaim = RegexFeature(r'!!+')
+	question = RegexFeature(r'\?')
 	bag_words = BagOfWords()
 	bag_words2 = BagOfWords(1,2,'char')
 
 	word_tag = WordTagBigram("you")
 
 
-	feats.extend([you_are])
+	feats.extend([go_beginning,you, bag_words, bag_words2])
 	return feats
 
 
@@ -344,4 +382,4 @@ print "-------------Got all test features - make predictions-----------------"
 
 results = clf.predict(matrix_test)
 #print results
-evaluate(dev_sentences, results, dev_labels, "SVM")
+evaluate(dev_sentences, results, dev_labels, "SVM", features)
