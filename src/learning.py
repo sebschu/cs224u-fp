@@ -3,14 +3,18 @@ from sklearn import svm
 from sklearn.svm import SVC
 import numpy
 from nltk import word_tokenize
+from nltk.metrics import edit_distance
 from nltk.tokenize.treebank import TreebankWordTokenizer
 from nltk.stem.porter import PorterStemmer
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_selection import SelectKBest, chi2
+from collections import defaultdict
 import csv
 import re
 
 class Feature(object):
 	tokens_cache = dict()
+
 	def __init__(self):
 		pass
 
@@ -44,8 +48,8 @@ class Feature(object):
 		return scipy.sparse.coo_matrix(all_values)
 
 class BagOfWords(Feature):
-	def __init__(self):
-		self._vectorizer = TfidfVectorizer(ngram_range=(1,2))
+	def __init__(self,mn=1,mx=2,analyzertype='word'):
+		self._vectorizer = TfidfVectorizer(ngram_range=(mn,mx),analyzer=analyzertype)
 		self._initialized = False
 
 	def extract_all(self, sentences):
@@ -64,9 +68,15 @@ class CapFeature(Feature):
 		pass
 
 	def extract(self, line):
-		num_caps = len(re.findall(r'[A-Z]{3}[A-Z]*', line))
-		num_lower = len(re.findall(r'[a-z]', line))
-		return [float(num_caps)]
+		count = 0
+		words = line.split()
+		for word in words:
+			if word.isupper():
+				count += 1
+		return [count]
+		#num_caps = len(re.findall(r'[A-Z]{3}[A-Z]*', line))
+		#num_lower = len(re.findall(r'[a-z]', line))
+		#return [float(num_caps)]
 
 class RegexFeature(Feature):
 	def __init__(self, regex):
@@ -101,6 +111,7 @@ class WordFeature(Feature):
 			return [1] if count > 0 else [0]
 		else:
 			return [10*(count / len(words))]
+
 
 class WordPosition(Feature):
 	def __init__(self, word, position=0):
@@ -200,15 +211,19 @@ def get_feature_values(sentences, features):
 
 def get_features():
 	feats = []
-	you = WordFeature(["you", "u", "you're"])
+	you = WordFeature(["you", "u", "you're","you've","you'd","your","yours"])
+	me = WordFeature(["me","my","i","mine"])
+
+	insults = WordFeature(["moron","iq","idiot","dumb","stupid","fool","dimwit","specimen"])
 	badwords = WordFeature(get_bad_words(), True)
 	word_pos = WordPosition("you", 0)
 	cap = CapFeature()
 	you_are = RegexFeature(r'([Yy]?o?u a?re?|[Yy]ou\'re) ')
 	exclaim = RegexFeature(r'!!+')
 	bag_words = BagOfWords()
+	bag_words2 = BagOfWords(1,2,'char')
 
-	feats.extend([bag_words, exclaim, badwords])
+	feats.extend([bag_words,badwords,bag_words2,you,me,cap])
 	return feats
 
 
