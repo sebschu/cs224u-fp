@@ -2,7 +2,8 @@ import scipy
 from sklearn import svm
 from sklearn.svm import SVC
 import numpy
-from nltk import word_tokenize
+import nltk
+#from nltk import word_tokenize
 from nltk.tokenize.treebank import TreebankWordTokenizer
 from nltk.stem.porter import PorterStemmer
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -15,6 +16,11 @@ class Feature(object):
 		pass
 
 	def preprocess(self, sentence):
+		sentence = re.sub(r'"', "", sentence)
+		sentence = re.sub(r'(\w)(\1\1+)', r'\1', sentence)
+		sentence = re.sub(r'_', " ", sentence)
+		sentence = re.sub(r'@', "a", sentence)
+		#sentence = re.sub(r'\$', "s", sentence)
 		sentence = re.sub(r'\\+[ux][0-9a-f]+', " ", sentence)
 		sentence = re.sub(r'\\+[nt]',' ',sentence)
 		sentence = re.sub(r'\\+[\']','\'',sentence)
@@ -42,6 +48,35 @@ class Feature(object):
 			values = self.extract(sentence)
 			all_values.append(values)
 		return scipy.sparse.coo_matrix(all_values)
+		
+		
+class POSNGramsFeature(Feature):
+	def __init__(self, N=2):
+		self._vectorizer = TfidfVectorizer(ngram_range=(1,2))
+		self._initialized = False
+		self._N = N;
+	
+	
+	def extract_all(self, sentences):
+		sentences = self.preprocess_all(sentences)
+		posSentences = []
+		for sentence in sentences:
+			tokens = self.tokenize(sentence)
+			posTags = nltk.pos_tag(tokens);
+			posSentence = ""
+			for t in posTags:
+			    posSentence += "%s " % t[1]
+			posSentences.append(posSentence[:-1])
+			
+		if not self._initialized:
+			matrix = self._vectorizer.fit_transform(posSentences)
+			self._initialized = True
+		else:
+			matrix = self._vectorizer.transform(posSentences)
+		#print matrix.todense()
+		return matrix
+
+
 
 class BagOfWords(Feature):
 	def __init__(self):
@@ -117,6 +152,7 @@ class WordPosition(Feature):
 
 
 def get_precision_recall(sentences, labels, predictions):
+	feat = Feature()
 	tp = fp = tn = fn = 0
 	for i in range(len(labels)):
 		label = labels[i]
@@ -125,13 +161,13 @@ def get_precision_recall(sentences, labels, predictions):
 			if prediction == 1:
 				tp += 1
 			else:
-				print "FN: " + sentences[i]
+				print "FN: " + feat.preprocess(sentences[i])
 				fn += 1
 		else:
 			if prediction == 0:
 				tn += 1
 			else:
-				print "FP: " + sentences[i]
+				print "FP: " + feat.preprocess(sentences[i])
 				fp += 1
 	precision = float(tp) / (tp + fp)
 	recall = float(tp) / (tp + fn)
@@ -200,15 +236,20 @@ def get_feature_values(sentences, features):
 
 def get_features():
 	feats = []
-	you = WordFeature(["you", "u", "you're"])
+	you = WordFeature(["you", "u", "you're", "you've", "you'd", "your", "yours"])
+	me = WordFeature(["me", "mine", "my", "i"])
+	
 	badwords = WordFeature(get_bad_words(), True)
 	word_pos = WordPosition("you", 0)
+	word_pos_ngram = POSNGramsFeature(3)
 	cap = CapFeature()
 	you_are = RegexFeature(r'([Yy]?o?u a?re?|[Yy]ou\'re) ')
+	go_beginning = RegexFeature(r'^go ')
 	exclaim = RegexFeature(r'!!+')
 	bag_words = BagOfWords()
+	bag_words_char = BagOfWords(1,2,'char')
 
-	feats.extend([bag_words, exclaim, badwords])
+	feats.extend([you, me, go_beginning, bag_words, bag_words_char, exclaim, badwords])
 	return feats
 
 
