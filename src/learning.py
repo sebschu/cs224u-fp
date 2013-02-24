@@ -129,16 +129,18 @@ class WordTagBigram(Feature):
 class BagOfWords(Feature):
 	
 	def name(self):
-		return "BagOfWords with mn=" + str(self._mn) + ", mx=" + str(self._mx) + ", analyzertype=" + self._analyzertype 
+		return "BagOfWords with mn=" + str(self._mn) + ", mx=" + str(self._mx) + ", analyzertype=" + self._analyzertype + ", numFeatures=" + str(self._numFeatures)
 		
-	def __init__(self,mn=1,mx=2,analyzertype='word'):
+	def __init__(self,numFeatures, mn=1, mx=2, analyzertype='word'):
 		self._vectorizer = TfidfVectorizer(ngram_range=(mn,mx),analyzer=analyzertype)
 		self._initialized = False
 		self._mn = mn
 		self._mx = mx
 		self._analyzertype = analyzertype
+		self._numFeatures = numFeatures
+		self._ch2 = SelectKBest(chi2, k=numFeatures)
 
-	def extract_all(self, sentences):
+	def extract_all(self, sentences,train,labels):
 		sentences = self.preprocess_all(sentences)
 		if not self._initialized:
 			matrix = self._vectorizer.fit_transform(sentences)
@@ -146,6 +148,11 @@ class BagOfWords(Feature):
 		else:
 			matrix = self._vectorizer.transform(sentences)
 		#print matrix.todense()
+		if self._numFeatures < matrix.shape[1]:
+			if train:
+				matrix = self._ch2.fit_transform(matrix, labels)
+			else:
+				matrix = self._ch2.transform(matrix)
 		return matrix
 
 
@@ -209,6 +216,65 @@ class WordFeature(Feature):
 		else:
 			return [10*(count / len(words))]
 
+class WordPairFeature(Feature):
+
+	def name(self):
+		return "WordPairFeature"
+
+	def __init__(self, badwords,youwords):
+		self._badwords = badwords
+		self._stemmed_badwords = []
+		self._youwords = youwords
+		self._part_of_badword = {}    #cache of words that start or end with offensive content
+		stemmer = PorterStemmer()
+		for word in badwords:
+			self._stemmed_badwords.append(stemmer.stem_word(word))
+
+	def isWordPartOf(self,word,wordlist): 
+		"""
+		return True if word starts or ends with a word from wordlist
+		"""
+		for w in wordlist:
+			if w in self._part_of_badword: 
+				return True    	 
+				if w.startswith(word) or w.endswith(word):
+					self._part_of_badword[w] = True 
+					return True
+					return False
+
+	def extract(self, line):
+		"""
+		find word pairs that co-occur and extract # of minimum distance word pairs in the line
+		"""
+		words = self.tokenize(line.lower())
+		count = 0.0
+		stemmer = PorterStemmer()
+		bad_indices = [] 
+		you_indices = [] 
+		for i in range(len(words)):
+			word = words[i] 
+			if word in self._youwords: 
+				you_indices.append(i)
+			word = stemmer.stem_word(word)
+			if word  in self._stemmed_badwords or self.isWordPartOf(word,self._badwords): 
+				bad_indices.append(i)
+			
+		 
+		if not bad_indices or not you_indices: 
+			return [-1]
+		else: 
+			#print line 
+			#print bad_indices
+			#print you_indices
+			distances = [] 
+			for bindex in bad_indices:
+				for yindex in you_indices: 
+					distances.append(abs(bindex - yindex))
+			#print distances
+			mn = min(distances)
+			count = sum([1 for d  in distances if d == mn])
+			#return [(count *1.0)* mn/len(line)]		
+			return [1]
 
 class WordPosition(Feature):
 	
@@ -316,13 +382,16 @@ def run_baseline():
 	results = baseline(sentences)
 	evaluate(sentences, results, labels, "baseline", [])
 
-def get_feature_values(sentences, features):
+def get_feature_values(sentences, features, train=True, labels=None, numFeatures=10000):
 	all_values = []
 	i = len(features)
 	for feature in features:
 		print str(i) + " features left to get"
 		i -= 1
-		values = feature.extract_all(sentences)
+		if isinstance(feature,BagOfWords):
+			values  = feature.extract_all(sentences,train,labels)
+		else:
+		    values = feature.extract_all(sentences)
 		all_values.append(values)
 
 	matrix = scipy.sparse.hstack(all_values)
@@ -333,7 +402,8 @@ def get_feature_values(sentences, features):
 
 def get_features():
 	feats = []
-	you = WordFeature(["ur","you", "u", "you're","you've","you'd","your","yours"])
+	youlist = ["ur","you", "u", "you're","you've","you'd","your","yours","yourself"]
+	you = WordFeature(youlist)
 	me = WordFeature(["me","my","i","mine"])
 
 	insults = WordFeature(["moron","iq","idiot","dumb","stupid","fool","dimwit","specimen"])
@@ -345,13 +415,13 @@ def get_features():
 	go_beginning = RegexFeature(r'^go ')
 	exclaim = RegexFeature(r'!!+')
 	question = RegexFeature(r'\?')
-	bag_words = BagOfWords()
-	bag_words2 = BagOfWords(1,2,'char')
+	bag_words = BagOfWords(10000)
+	bag_words2 = BagOfWords(10000,1,2,'char')
 
 	word_tag = WordTagBigram("you")
+	word_pair = WordPairFeature(get_bad_words(),youlist)
 
-
-	feats.extend([go_beginning,you, bag_words, bag_words2])
+	feats.extend([word_pair,bag_words,bag_words2,me,cap,go_beginning])
 	return feats
 
 
@@ -359,7 +429,7 @@ run_baseline()
 features = get_features()
 train_sentences, train_labels = get_train_data()
 print "-------------Start getting train features----------------------------"
-matrix = get_feature_values(train_sentences, features)
+matrix = get_feature_values(train_sentences, features, True, train_labels)
 
 print "-------------Got all train features - start training-----------------"
 
@@ -368,15 +438,16 @@ print "-------------Got all train features - start training-----------------"
 clf = svm.SVC(kernel='linear')
 clf.fit(matrix, train_labels) 
 
-SVC(C=1.0, cache_size=200, class_weight=None, coef0=0.0, degree=3,
-gamma=0.0, kernel='linear', max_iter=-1, probability=False, shrinking=True,
+
+clf = svm.SVC(C=1.0, cache_size=200, class_weight=None, coef0=0.0, degree=3,
+gamma=0.0, kernel='linear', max_iter=-1, probability=True, shrinking=True,
 tol=0.001, verbose=False)
 
 print "------------------------Finished training-----------------"
 
 dev_sentences, dev_labels = get_dev_data()
 
-matrix_test = get_feature_values(dev_sentences, features)
+matrix_test = get_feature_values(dev_sentences, features, False)
 
 print "-------------Got all test features - make predictions-----------------"
 
