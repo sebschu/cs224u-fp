@@ -240,7 +240,7 @@ class WordPairFeature(Feature):
 				if w.startswith(word) or w.endswith(word):
 					self._part_of_badword[w] = True 
 					return True
-					return False
+		return False
 
 	def extract(self, line):
 		"""
@@ -439,8 +439,8 @@ clf = svm.SVC(kernel='linear')
 clf.fit(matrix, train_labels) 
 
 
-clf = svm.SVC(C=1.0, cache_size=200, class_weight=None, coef0=0.0, degree=3,
-gamma=0.0, kernel='linear', max_iter=-1, probability=True, shrinking=True,
+svm.SVC(C=1.0, cache_size=200, class_weight=None, coef0=0.0, degree=3,
+gamma=0.0, kernel='linear', max_iter=-1, probability=False, shrinking=True,
 tol=0.001, verbose=False)
 
 print "------------------------Finished training-----------------"
