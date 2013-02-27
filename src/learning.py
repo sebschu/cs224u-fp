@@ -12,12 +12,15 @@ from sklearn.feature_selection import SelectKBest, chi2
 from collections import defaultdict
 import csv
 import re
+from sentimenttokenizer import Tokenizer
+from spellchecking import SpellChecker
 
 RESULTS_FILE = "results.txt"
 
 class Feature(object):
 	tokens_cache = dict()
-
+	checker = SpellChecker()
+	
 	def __init__(self):
 		pass
 
@@ -26,12 +29,17 @@ class Feature(object):
 		sentence = re.sub(r'(\w)(\1\1\1+)', r'\1', sentence)
 		sentence = re.sub(r'_', " ", sentence)
 		#sentence = re.sub(r'-', " ", sentence)
+		sentence = re.sub(r'^@[a-z0-9_]', "NAMEMENTION", sentence)
 		sentence = re.sub(r'@', "a", sentence)
 		#sentence = re.sub(r'\$', "s", sentence)
 		sentence = re.sub(r'\\+[ux][0-9a-f]+', " ", sentence)
 		sentence = re.sub(r'\\+[nt]',' ',sentence)
 		sentence = re.sub(r'\\+[\']','\'',sentence)
 		sentence = re.sub(r'&\w+;',' ',sentence)
+		#sentence = re.sub(r'you are( an?)? ', "you ", sentence)
+		#sentence = re.sub(r'you\'re( an?)? ', "you ", sentence)
+		#sentence = re.sub(r'u r( an?)? ', "you ", sentence)
+		#sentence = re.sub(r'ur( an?)? ', "you ", sentence)
 		return sentence
 
 	def preprocess_all(self, sentences):
@@ -43,8 +51,8 @@ class Feature(object):
 	def tokenize(self, sentence):
 		sentence = self.preprocess(sentence)
 		if sentence not in Feature.tokens_cache:
-			tokenizer = TreebankWordTokenizer()
-			Feature.tokens_cache[sentence] = tokenizer.tokenize(sentence)
+			tokenizer = Tokenizer()
+			Feature.tokens_cache[sentence] = [Feature.checker.correct(t) for t in tokenizer.tokenize(sentence)]
 		return Feature.tokens_cache[sentence]
 
 	def extract_all(self, sentences):
@@ -61,7 +69,8 @@ class POSNGramsFeature(Feature):
 		return "POSNGrams with N=" + str(self._N)
 	
 	def __init__(self, N=2):
-		self._vectorizer = TfidfVectorizer(ngram_range=(1,2))
+		self._tokenizer = Tokenizer()
+		self._vectorizer = TfidfVectorizer(ngram_range=(1,2), tokenizer=self._tokenizer.tokenize)
 		self._initialized = False
 		self._N = N;
 	
@@ -92,7 +101,8 @@ class WordTagBigram(Feature):
 		return "WordTagBigram with N=" + str(self._N) + " and word=" + self._word
 	
 	def __init__(self, word, N=4):
-		self._vectorizer = TfidfVectorizer(ngram_range=(1,2))
+		self._tokenizer = Tokenizer()
+		self._vectorizer = TfidfVectorizer(ngram_range=(1,2), tokenizer=self._tokenizer.tokenize)
 		self._initialized = False
 		self._word = word
 		self._N = N
@@ -132,7 +142,11 @@ class BagOfWords(Feature):
 		return "BagOfWords with mn=" + str(self._mn) + ", mx=" + str(self._mx) + ", analyzertype=" + self._analyzertype + ", numFeatures=" + str(self._numFeatures)
 		
 	def __init__(self,numFeatures, mn=1, mx=2, analyzertype='word'):
-		self._vectorizer = TfidfVectorizer(ngram_range=(mn,mx),analyzer=analyzertype)
+		self._tokenizer = Tokenizer()	
+		if analyzertype == 'word':
+			self._vectorizer = TfidfVectorizer(ngram_range=(mn,mx),analyzer=analyzertype)
+		else:
+			self._vectorizer = TfidfVectorizer(ngram_range=(mn,mx),analyzer=analyzertype)
 		self._initialized = False
 		self._mn = mn
 		self._mx = mx
@@ -198,7 +212,6 @@ class WordFeature(Feature):
 		for word in words:
 			self._stemmed_keywords.append(stemmer.stem_word(word))
 		self._is_binary = is_binary
-
 	def extract(self, line):
 		
 		words = self.tokenize(line.lower())
@@ -412,7 +425,7 @@ def get_features():
 	word_pos_ngram = POSNGramsFeature(3)
 	cap = CapFeature()
 	you_are = RegexFeature(r'([Yy]?o?u a?re?|[Yy]ou\'re) ')
-	go_beginning = RegexFeature(r'^go ')
+	go_beginning = RegexFeature(r'^[Gg]o ')
 	exclaim = RegexFeature(r'!!+')
 	question = RegexFeature(r'\?')
 	bag_words = BagOfWords(10000)
