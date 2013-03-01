@@ -14,7 +14,7 @@ import csv
 import re
 from sentimenttokenizer import Tokenizer
 from spellchecking import SpellChecker
-
+import sentimentorientation 
 RESULTS_FILE = "results.txt"
 
 class Feature(object):
@@ -52,7 +52,8 @@ class Feature(object):
 		sentence = self.preprocess(sentence)
 		if sentence not in Feature.tokens_cache:
 			tokenizer = Tokenizer()
-			Feature.tokens_cache[sentence] = [Feature.checker.correct(t) for t in tokenizer.tokenize(sentence)]
+			#Feature.tokens_cache[sentence] = [Feature.checker.correct(t) for t in tokenizer.tokenize(sentence)]
+			Feature.tokens_cache[sentence] = tokenizer.tokenize(sentence)
 		return Feature.tokens_cache[sentence]
 
 	def extract_all(self, sentences):
@@ -289,6 +290,51 @@ class WordPairFeature(Feature):
 			#return [(count *1.0)* mn/len(line)]		
 			return [1]
 
+class SentimentOrientation(Feature): 
+	def name(self): 
+		return "SemanticOrientation" + self._contextsize 
+
+	def __init__(self,contextsize=100): 
+		self._contextsize = contextsize
+		self._pwords = get_opinion_words(positive="True")
+		self._nwords = get_opinion_words(positive="False")
+		self._soscores = {}
+		self._tokenizer = Tokenizer()
+		self._initialized = False
+
+	def extract_all(self, sentences,labels):
+		sentences = self.preprocess_all(sentences)
+		if not self._initialized:
+			self._soscores = sentimentorientation.getSOAScores(sentences,self._pwords, self._nwords, self._contextsize) 
+			self._initialized = True
+		all_values = []
+		neg_values = []  #for debug
+		pos_values = []  #ditto
+		if not labels: 
+		    labels = [0] * len(sentences)
+		    labels[0] = 1
+		samples = zip(sentences,labels)
+		for sentence,label in samples:
+		    score = 0.0
+		    words = self._tokenizer.tokenize(sentence)
+		    tagged = nltk.pos_tag(words)
+		    for word,tag in tagged: 
+		    	if not (tag.startswith("JJ") or tag.startswith("RB") or tag.startswith("NN") or tag.startswith("VB")):
+		    		continue
+		    	if word in self._soscores: 
+					score += self._soscores[word]
+		    #print sentence ,":" ,str(score)
+		    all_values.append([score])
+		    if label == 0: 
+		    	neg_values.append(score)
+		    else: 
+		    	pos_values.append(score)
+		print scipy.sparse.coo_matrix(all_values).shape
+		print min(all_values), ":" , max(all_values)
+		print min(pos_values), "-pos+" , max(pos_values)
+		print min(neg_values), "-neg+" , max(neg_values)
+		return scipy.sparse.coo_matrix(all_values)
+
 class WordPosition(Feature):
 	
 	def name(self):
@@ -304,7 +350,37 @@ class WordPosition(Feature):
 			pos = words.index(self._word)
 			return [(1.0 / (1 + abs(self._position - pos)))]
 		return [0.0]
+class WordPartFeature(Feature):
 
+	def name(self):
+		return "WordPartFeature"
+
+	def __init__(self, wordlist1,wordlist2,mindist = 1,maxdist=100):
+		self._wordlist = []
+ 		stemmer = PorterStemmer()
+		self._mindistance = mindist
+		self._maxdistance = maxdist
+		for word1 in wordlist1:
+			for word2 in wordlist2: 
+			   word1 = stemmer.stem_word(word1)
+			   self._wordlist.append(word1 + word2)
+			   self._wordlist.append(word1 + "-" + word2)
+			   self._wordlist.append(word1)
+  
+	def extract(self, line):
+		"""
+		find word pairs that co-occur and extract # of minimum distance word pairs in the line
+		"""
+		words = self.tokenize(line.lower())
+		 
+		stemmer = PorterStemmer()
+		 
+		for i in range(len(words)):
+			word = stemmer.stem_word(words[i])
+			if word in self._wordlist: 
+			   return [1.0]
+		return [0.0]
+			
 
 
 def get_precision_recall(sentences, labels, predictions):
@@ -317,13 +393,13 @@ def get_precision_recall(sentences, labels, predictions):
 			if prediction == 1:
 				tp += 1
 			else:
-				print "FN: " + feat.preprocess(sentences[i])
+				#print "FN: " + feat.preprocess(sentences[i])
 				fn += 1
 		else:
 			if prediction == 0:
 				tn += 1
 			else:
-				print "FP: " + feat.preprocess(sentences[i])
+				#print "FP: " + feat.preprocess(sentences[i])
 				fp += 1
 	precision = float(tp) / (tp + fp)
 	recall = float(tp) / (tp + fn)
@@ -351,6 +427,20 @@ def get_dev_data():
 
 def get_test_data():
 	return get_data("../data/kaggle/test.csv")
+
+def get_opinion_words(positive="True",num=2000):
+	words = []
+	if positive: 
+		words = open("../data/positive-words.txt").readlines()
+	else:
+		words = open("../data/negative-words.txt").readlines()
+
+	opinion_words = [] 
+	for w in words : 
+		if w.startswith(";") or len(w) == 0: 
+		   continue
+		opinion_words.append(w.lower().strip())
+	return set(opinion_words)
 
 def baseline(sentences):
 	predictions = []
@@ -401,8 +491,10 @@ def get_feature_values(sentences, features, train=True, labels=None, numFeatures
 	for feature in features:
 		print str(i) + " features left to get"
 		i -= 1
-		if isinstance(feature,BagOfWords):
+		if isinstance(feature,BagOfWords) :
 			values  = feature.extract_all(sentences,train,labels)
+		elif  isinstance(feature,SentimentOrientation):
+			values  = feature.extract_all(sentences,labels)
 		else:
 		    values = feature.extract_all(sentences)
 		all_values.append(values)
@@ -418,7 +510,7 @@ def get_features():
 	youlist = ["ur","you", "u", "you're","you've","you'd","your","yours","yourself"]
 	you = WordFeature(youlist)
 	me = WordFeature(["me","my","i","mine"])
-
+	bodylist = ["bag","head","brain","tooth","mouth","leg","hand","neck","end","eye","ear","nose","face","ear"]
 	insults = WordFeature(["moron","iq","idiot","dumb","stupid","fool","dimwit","specimen"])
 	badwords = WordFeature(get_bad_words(), True)
 	word_pos = WordPosition("you", 0)
@@ -433,8 +525,10 @@ def get_features():
 
 	word_tag = WordTagBigram("you")
 	word_pair = WordPairFeature(get_bad_words(),youlist)
-
-	feats.extend([word_pair,bag_words,bag_words2,me,cap,go_beginning])
+	so_feature = SentimentOrientation(100)
+	word_part = WordPartFeature(get_bad_words(),bodylist)
+	feats.extend([word_pair,bag_words,bag_words2,me,cap,go_beginning,so_feature])
+	#feats.extend([so_feature])
 	return feats
 
 
@@ -442,6 +536,7 @@ run_baseline()
 features = get_features()
 train_sentences, train_labels = get_train_data()
 print "-------------Start getting train features----------------------------"
+print len(train_sentences)
 matrix = get_feature_values(train_sentences, features, True, train_labels)
 
 print "-------------Got all train features - start training-----------------"
@@ -465,5 +560,5 @@ matrix_test = get_feature_values(dev_sentences, features, False)
 print "-------------Got all test features - make predictions-----------------"
 
 results = clf.predict(matrix_test)
-#print results
+print results
 evaluate(dev_sentences, results, dev_labels, "SVM", features)
