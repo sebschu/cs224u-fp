@@ -1,13 +1,14 @@
 import scipy
 from sklearn import svm
 from sklearn.svm import SVC
+from sklearn.linear_model import LogisticRegression
 import numpy
 import nltk
 #from nltk import word_tokenize
 from nltk.metrics import edit_distance
 from nltk.tokenize.treebank import TreebankWordTokenizer
 from nltk.stem.porter import PorterStemmer
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from sklearn.feature_selection import SelectKBest, chi2
 from collections import defaultdict
 import csv
@@ -20,7 +21,8 @@ RESULTS_FILE = "results.txt"
 class Feature(object):
 	tokens_cache = dict()
 	checker = SpellChecker()
-	
+	sentence_tokenizer = nltk.data.load('tokenizers/punkt/english.pickle')
+  
 	def __init__(self):
 		pass
 
@@ -29,17 +31,53 @@ class Feature(object):
 		sentence = re.sub(r'(\w)(\1\1\1+)', r'\1', sentence)
 		sentence = re.sub(r'_', " ", sentence)
 		#sentence = re.sub(r'-', " ", sentence)
-		sentence = re.sub(r'^@[a-z0-9_]', "NAMEMENTION", sentence)
+		sentence = re.sub(r'^@[a-z0-9_]+', "NAMEMENTION", sentence)
+		#sentence = re.sub(r'[a-z]+[\$%#@\*]+[a-z]*', " SWEARWORD ", sentence)
 		sentence = re.sub(r'@', "a", sentence)
 		#sentence = re.sub(r'\$', "s", sentence)
 		sentence = re.sub(r'\\+[ux][0-9a-f]+', " ", sentence)
 		sentence = re.sub(r'\\+[nt]',' ',sentence)
 		sentence = re.sub(r'\\+[\']','\'',sentence)
 		sentence = re.sub(r'&\w+;',' ',sentence)
+		sentence = re.sub(r'<([^>]+)>', ' ', sentence)
+		#sentence = re.sub(r'#[a-z0-9]+', ' ', sentence)
+		sentence = re.sub(r'(https?:\/\/).*? ', ' ', sentence)
+		sentence = re.sub(r' +', ' ', sentence)
+		sentence = re.sub("yall", "you all", sentence)
+		#sentence = re.sub(r'you are', 'you_are', sentence)
+		#sentence = re.sub(r'u r', 'you_are', sentence)
+		
+		#sentence = sentence.replace(" u "," you ")
+		#sentence = sentence.replace(" em "," them ")
+		#sentence = sentence.replace(" da "," the ")
+		#sentence = sentence.replace(" yo "," you ")
+		#sentence = sentence.replace(" ur "," you ")
+		#sentence = sentence.replace("won't", "will not")
+		#sentence = sentence.replace("can't", "cannot")
+		#sentence = sentence.replace("i'm", "i am")
+		#sentence = sentence.replace(" im ", " i am ")
+		#sentence = sentence.replace("ain't", "is not")
+		#sentence = sentence.replace("'ll", " will")
+		#sentence = sentence.replace("'ll", " will")
+		#sentence = sentence.replace("'t", " not")
+		#sentence = sentence.replace("'ve", " have")
+		#sentence = sentence.replace("'s", " is")
+		#sentence = sentence.replace("'d", " would")
 		#sentence = re.sub(r'you are( an?)? ', "you ", sentence)
 		#sentence = re.sub(r'you\'re( an?)? ', "you ", sentence)
 		#sentence = re.sub(r'u r( an?)? ', "you ", sentence)
 		#sentence = re.sub(r'ur( an?)? ', "you ", sentence)
+		
+		#sentences = Feature.sentence_tokenizer.tokenize(sentence)
+		#youlist = [" ur ","you", " u ", "you're","you've","you'd","your","yours","yourself", "youre"]
+		#you_sentences = []
+		#for s in sentences:
+		#	for y in youlist:
+		#		if y in s:
+		#			you_sentences.append(s)
+		#if len(you_sentences) > 0:
+		#	return " ".join(you_sentences)
+		
 		return sentence
 
 	def preprocess_all(self, sentences):
@@ -227,7 +265,7 @@ class WordFeature(Feature):
 		if self._is_binary:
 			return [1] if count > 0 else [0]
 		else:
-			return [10*(count / len(words))]
+			return [count]
 
 class WordPairFeature(Feature):
 
@@ -307,23 +345,37 @@ class WordPosition(Feature):
 
 
 
-def get_precision_recall(sentences, labels, predictions):
+def get_precision_recall(sentences, labels, predictions, probs):
 	feat = Feature()
+	you_are = ["you are", "u r ", "ur ", "your ", "you're", "go "]
+	badwords = get_bad_words()
 	tp = fp = tn = fn = 0
 	for i in range(len(labels)):
-		label = labels[i]
+		sentence = feat.preprocess(sentences[i]).lower()
 		prediction = predictions[i]
+		if prediction == 0 and probs[i][1] > 0.3:
+			for y in you_are:
+				if (sentence.startswith(y)):
+					prediction = 1
+			if prediction == 0 and probs[i][1] > 0.4:
+				for w in sentence.split():
+					if w in badwords:
+						prediction = 1
+						break
+		label = labels[i]
 		if label == 1:
 			if prediction == 1:
 				tp += 1
 			else:
-				print "FN: " + feat.preprocess(sentences[i])
+				#if probs[i][1] > 0.3:
+				print "FN (" + str(probs[i][1]) + "): " + sentence
 				fn += 1
 		else:
 			if prediction == 0:
 				tn += 1
 			else:
-				print "FP: " + feat.preprocess(sentences[i])
+				#if probs[i][0] > 0.3:
+				print "FP (" + str(probs[i][0]) + "): " + sentence
 				fp += 1
 	precision = float(tp) / (tp + fp)
 	recall = float(tp) / (tp + fn)
@@ -348,6 +400,10 @@ def get_train_data():
 
 def get_dev_data():
 	return get_data("../data/kaggle/dev.csv")
+	
+def get_other_data():
+	return get_data("../data/other_insults.csv")
+
 
 def get_test_data():
 	return get_data("../data/kaggle/test.csv")
@@ -363,11 +419,11 @@ def baseline(sentences):
 			predictions.append(1)
 	return predictions
 
-def evaluate(sentences, predictions, labels, name, features):
+def evaluate(sentences, predictions, labels, name, features, probs):
 
 	if name == "baseline": return
 	print "------Results for " + name + " model------------"
-	precision, recall = get_precision_recall(sentences, labels, predictions)
+	precision, recall = get_precision_recall(sentences, labels, predictions, probs)
 	print "precision: " + str(precision)
 	print "recall: " + str(recall)
 
@@ -393,7 +449,7 @@ def evaluate(sentences, predictions, labels, name, features):
 def run_baseline():
 	sentences, labels = get_dev_data()
 	results = baseline(sentences)
-	evaluate(sentences, results, labels, "baseline", [])
+	evaluate(sentences, results, labels, "baseline", [], [])
 
 def get_feature_values(sentences, features, train=True, labels=None, numFeatures=10000):
 	all_values = []
@@ -420,15 +476,15 @@ def get_features():
 	me = WordFeature(["me","my","i","mine"])
 
 	insults = WordFeature(["moron","iq","idiot","dumb","stupid","fool","dimwit","specimen"])
-	badwords = WordFeature(get_bad_words(), True)
+	badwords = WordFeature(get_bad_words(), False)
 	word_pos = WordPosition("you", 0)
 	word_pos_ngram = POSNGramsFeature(3)
 	cap = CapFeature()
 	you_are = RegexFeature(r'([Yy]?o?u a?re?|[Yy]ou\'re) ')
-	go_beginning = RegexFeature(r'^[Gg]o ')
+	go_beginning = RegexFeature(r'^\s*[Gg]o ')
 	exclaim = RegexFeature(r'!!+')
 	question = RegexFeature(r'\?')
-	bag_words = BagOfWords(10000)
+	bag_words = BagOfWords(10000,1,2)
 	bag_words2 = BagOfWords(10000,1,2,'char')
 
 	word_tag = WordTagBigram("you")
@@ -448,13 +504,14 @@ print "-------------Got all train features - start training-----------------"
 
 #print matrix[0]
 #print train_labels
-clf = svm.SVC(kernel='linear')
+clf = svm.SVC(kernel='linear', probability=True)
 clf.fit(matrix, train_labels) 
 
-
-svm.SVC(C=1.0, cache_size=200, class_weight=None, coef0=0.0, degree=3,
-gamma=0.0, kernel='linear', max_iter=-1, probability=False, shrinking=True,
-tol=0.001, verbose=False)
+#maxent = LogisticRegression(penalty='l2', dual=False, tol=0.0001, C=1.0, fit_intercept=True, intercept_scaling=1, class_weight=None, random_state=None)
+#maxent.fit(matrix, train_labels)
+#svm.SVC(C=1.0, cache_size=200, class_weight=None, coef0=0.0, degree=3,
+#gamma=0.0, kernel='linear', max_iter=-1, probability=True, shrinking=True,
+#tol=0.001, verbose=False)
 
 print "------------------------Finished training-----------------"
 
@@ -465,5 +522,13 @@ matrix_test = get_feature_values(dev_sentences, features, False)
 print "-------------Got all test features - make predictions-----------------"
 
 results = clf.predict(matrix_test)
+result_probs = clf.predict_proba(matrix_test)
 #print results
-evaluate(dev_sentences, results, dev_labels, "SVM", features)
+evaluate(dev_sentences, results, dev_labels, "SVM", features, result_probs)
+
+#print "-------------MaxEnt predictions-----------------"
+
+#results = maxent.predict(matrix_test)
+#result_probs = maxent.predict_proba(matrix_test)
+#print results
+#evaluate(dev_sentences, results, dev_labels, "SVM", features, result_probs)

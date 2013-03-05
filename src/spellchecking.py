@@ -7,7 +7,8 @@ import re, collections
 class SpellChecker():
 
   def __init__(self):
-    self._NWORDS = self.train(self.words(file('../data/badwords.txt').read()))
+    return
+    self._NWORDS = self.train(self.words(file('../data/dictionaryCorpus.txt').read()))
     self._alphabet = 'abcdefghijklmnopqrstuvwxyz'
     self._cache = collections.defaultdict()
   def words(self,text): return re.findall('[a-z]+', text.lower()) 
@@ -32,6 +33,7 @@ class SpellChecker():
   def known(self,words): return set(w for w in words if w in self._NWORDS)
 
   def correct(self,word):
+    return word
     if not word in self._cache:
       candidates = self.known([word]) or self.known(self.edits1(word)) or self.known_edits2(word) or [word]
       self._cache[word] = max(candidates, key=self._NWORDS.get)
