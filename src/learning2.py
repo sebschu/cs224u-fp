@@ -21,7 +21,7 @@ RESULTS_FILE = "results.txt"
 
 class Feature(object):
 	tokens_cache = dict()
-	#checker = SpellChecker()
+	checker = SpellChecker()
 	sentence_tokenizer = nltk.data.load('tokenizers/punkt/english.pickle')
   
 	def __init__(self):
@@ -32,7 +32,7 @@ class Feature(object):
 		sentence = re.sub(r'(\w)(\1\1\1+)', r'\1', sentence)
 		sentence = re.sub(r'_', " ", sentence)
 		#sentence = re.sub(r'-', " ", sentence)
-		sentence = re.sub(r'^@[a-z0-9_A-Z-]+', "NAMEMENTION", sentence)
+		sentence = re.sub(r'^@[a-z0-9_]+', "NAMEMENTION", sentence)
 		#sentence = re.sub(r'[a-z]+[\$%#@\*]+[a-z]*', " SWEARWORD ", sentence)
 		sentence = re.sub(r'@', "a", sentence)
 		#sentence = re.sub(r'\$', "s", sentence)
@@ -67,7 +67,7 @@ class Feature(object):
 		#sentence = re.sub(r'you are( an?)? ', "you ", sentence)
 		#sentence = re.sub(r'you\'re( an?)? ', "you ", sentence)
 		#sentence = re.sub(r'u r( an?)? ', "you ", sentence)
-	  #sentence = re.sub(r'ur( an?)? ', "you ", sentence)
+		#sentence = re.sub(r'ur( an?)? ', "you ", sentence)
 		
 		#sentences = Feature.sentence_tokenizer.tokenize(sentence)
 		#youlist = [" ur ","you", " u ", "you're","you've","you'd","your","yours","yourself", "youre"]
@@ -429,27 +429,26 @@ def get_precision_recall(sentences, labels, predictions, probs, threshold):
 	tp = fp = tn = fn = 0
 	for i in range(len(labels)):
 		sentence = feat.preprocess(sentences[i]).lower()
-		forcePositive = False
-		if probs[i][1] < threshold and probs[i][1] > 0.3:
+		prediction = predictions[i]
+		if prediction == -1 and probs[i][1] > 0.3:
 			for y in you_are:
 				if (sentence.startswith(y)):
-					forcePositive = True
-			if not forcePositive and probs[i][1] > 0.15:
-				for w in feat.tokenize(sentence):
+					prediction = 1
+			if prediction == -1 and probs[i][1] > 0.4:
+				for w in sentence.split():
 					if w in badwords:
-						forcePositive = True
+						prediction = 1
 						break
-		forcePositive = False
 		label = labels[i]
 		if label == 1:
-			if forcePositive or probs[i][1] >= threshold:
+			if probs[i][1] >= threshold:
 				tp += 1
 			else:
 				#if probs[i][1] > 0.3:
 				#print "FN (" + str(probs[i][1]) + "): " + sentence
 				fn += 1
 		else:
-			if not forcePositive and probs[i][1] < threshold:
+			if probs[i][1] < threshold:
 				tn += 1
 			else:
 				#if probs[i][0] > 0.3:
@@ -482,32 +481,13 @@ def get_dev_data():
 def get_other_data():
 	return get_data("../data/other_insults.csv")
 
-def get_yt_data():
-	return get_data("../data/other/yt.csv")
 
 def get_test_data():
 	return get_data("../data/kaggle/test.csv")
-	
-def get_sentences(comments):
-	sentence_index = []
-	sentence_count = []
-	sentences = []
-	for comment in comments:
-		sents = Feature.sentence_tokenizer.tokenize(comment)
-		sentence_index.append(len(sentences))
-		count = 0
-		for s in sents:
-			s = s.strip()
-			if len(s) > 2:
-				sentences.append(s)
-				count = count + 1
-		if count < 1:
-			count = 1
-			sentences.append(comment)
-		sentence_count.append(count)
-	return [sentences, sentence_index, sentence_count]
-	
-	
+
+def get_yt_data():
+	return get_data("../data/other/yt.csv")
+
 def get_opinion_words(positive="True",num=2000):
 	words = []
 	if positive: 
@@ -534,8 +514,8 @@ def baseline(sentences):
 	return predictions
 
 def evaluate(sentences, predictions, labels, name, features, probs):
+
 	if name == "baseline": return
-	print len(sentences)
 	print "------Results for " + name + " model------------"
 	i = 0.0
 	while i <= 1.0:
@@ -603,13 +583,6 @@ def get_features():
 	go_beginning = RegexFeature(r'^\s*[Gg]o ')
 	exclaim = RegexFeature(r'!!+')
 	question = RegexFeature(r'\?')
-	#bag_words = BagOfWords(4000,1,1)
-	#bag_words2 = BagOfWords(6000,2,2)
-	#bag_words3 = BagOfWords(500,3,3)
-	#bag_words4 = BagOfWords(1000,4,4,'char')
-	#bag_words5 = BagOfWords(1000,5,5,'char')
-	#bag_words6 = BagOfWords(2000,3,3,'char')
-	#bag_words7 = BagOfWords(5000,1,2,'char')
 	bag_words = BagOfWords(10000,1,2)
 	bag_words2 = BagOfWords(10000,1,2,'char')
 
@@ -618,73 +591,28 @@ def get_features():
 	so_feature = SentimentOrientation(100)
 	word_part = WordPartFeature(get_bad_words(),bodylist)
 	feats.extend([word_pair,bag_words,bag_words2,me,cap,go_beginning])
-	#feats.extend([word_pair,bag_words,bag_words2,bag_words3,bag_words5,bag_words6,bag_words7,me,cap,go_beginning])
 	#feats.extend([so_feature])
 	return feats
 
 
-def run_subset(trainComments, trainLabels, sampleSize):
+def run_subset(trainSentences, trainLabels, sampleSize):
 	 
 	print "Sample Size: " + str(sampleSize)
 	
-	train_comments = trainComments[0:sampleSize-1]
+	train_sentences = trainSentences[0:sampleSize-1]
 	train_labels = trainLabels[0:sampleSize-1]
-	
-	train_sentences, train_sentence_index, train_sentence_counts = get_sentences(train_comments)
 	
 	features = get_features()
 	print "-------------Start getting train features----------------------------"
-	matrix = get_feature_values(train_comments, features, True, train_labels)
+	matrix = get_feature_values(train_sentences, features, True, train_labels)
 
-	clf1 = svm.SVC(kernel='linear', probability=True)
-	clf1.fit(matrix, train_labels)
-	
-	print "-------------Got all train features - Starting Sentence Based Learning-----------------"
-	
-
-	#train_sentences_matrix = get_feature_values(train_sentences, features, False)
-	
-	#results_train_sentences = clf1.predict(train_sentences_matrix)
-	
-	#print "SENTENCE INDEX LEN:" + str(len(train_sentence_index))
-	
-	
-	#sentence_labels = []
-	#for i in range(0,len(train_sentence_index)):
-	#	label = train_labels[i]
-		#all sentences in negative example should be marked negative
-	"""	if label == 0:
-			for j in range(train_sentence_index[i],  train_sentence_index[i] + train_sentence_counts[i]):
-				sentence_labels.append(0)
-		else:
-			positive = False
-			for j in range(train_sentence_index[i],  train_sentence_index[i] + train_sentence_counts[i]):
-				if results_train_sentences[j] >= 0.5:
-					positive = True
-					break
-			for j in range(train_sentence_index[i],  train_sentence_index[i] + train_sentence_counts[i]):
-				if positive and results_train_sentences[j] < 0.5:
-					sentence_labels.append(0)
-				else: 
-					sentence_labels.append(1)
-	
-	print "SENTENCE LABELS:" + str(len(sentence_labels))
-	print "TRAIN SENTENCES:" + str(len(train_sentences))
-	features = get_features()
-	train_sentences_matrix = get_feature_values(train_sentences, features, True, sentence_labels)
-	
-	
-
-	print "-------------Got all train features - start final training-----------------"
-
-	clf = svm.SVC(kernel='linear', probability=True)
-	clf.fit(train_sentences_matrix, sentence_labels)
+	print "-------------Got all train features - start training-----------------"
 
 	#print matrix[0]
 	#print train_labels
 	#clf = DecisionTreeClassifier(min_samples_leaf=1)
 
-"""
+
 
 	#maxent = LogisticRegression(penalty='l2', dual=False, tol=0.0001, C=1.0, fit_intercept=True, intercept_scaling=1, class_weight=None, random_state=None)
 	#maxent.fit(matrix, train_labels)
@@ -694,8 +622,7 @@ def run_subset(trainComments, trainLabels, sampleSize):
 
 	print "------------------------Finished training-----------------"
 
-	dev_comments, dev_labels = get_yt_data()
-	dev_sentences, dev_sentence_index, dev_sentence_counts = get_sentences(dev_comments)
+	dev_sentences, dev_labels = get_dev_data()
 
 	matrix_test = get_feature_values(dev_sentences, features, False)
 
@@ -703,28 +630,19 @@ def run_subset(trainComments, trainLabels, sampleSize):
 
 
 
+	clf = svm.SVC(kernel='linear', probability=True)
+	clf.fit(matrix, train_labels) 
 
 
-
-	sentence_results = clf1.predict(matrix_test)
-	sentence_result_probs = clf1.predict_proba(matrix_test)
-	result_probs = []	
-	for i in range(0,len(dev_sentence_index)):
-		result_probs.append([1.0,0.0])
-		totalProb = 0.0
-		for j in range(dev_sentence_index[i],  dev_sentence_index[i] + dev_sentence_counts[i]):
-			totalProb = totalProb + sentence_result_probs[j][1]
-			if result_probs[i][1] < sentence_result_probs[j][1]:
-				result_probs[i] = sentence_result_probs[j]
-		totalProb = totalProb / float(dev_sentence_counts[i])
-		if totalProb < 0.2 and result_probs[i][1] > 0.5:
-			result_probs[i] = [1-totalProb,totalProb]
+	results = clf.predict(matrix_test)
+	result_probs = clf.predict_proba(matrix_test)
+	
 	pred_file = open('preds.txt', 'w')
 	for prob in result_probs:
 		pred_file.write(str(prob[1]) + '\n')
 	
 	#print results
-	evaluate(dev_comments, sentence_results, dev_labels, "SVM", features, result_probs)
+	evaluate(dev_sentences, results, dev_labels, "SVM", features, result_probs)
 
 	#print "-------------MaxEnt predictions-----------------"
 
@@ -733,71 +651,59 @@ def run_subset(trainComments, trainLabels, sampleSize):
 	#print results
 	#evaluate(dev_sentences, results, dev_labels, "SVM", features, result_probs)
 
+run_baseline()
 
-if __name__ == "__main__":
-	run_baseline()
+train_sentences, train_labels = get_train_data()
+#for i in range(500,len(train_labels), 500):
+#	run_subset(train_sentences, train_labels, i)
 
-	
-	
-	train_comments, train_labels = get_train_data()
-	
-	
-	#for i in range(500,len(train_labels), 500):
-	#	run_subset(train_sentences, train_labels, i)
-	
-	run_subset(train_comments, train_labels, len(train_labels))
-	
-	
-	
-	
-	
-	
-	
-	'''
-	features = get_features()
-	train_sentences, train_labels = get_train_data()
-	print "-------------Start getting train features----------------------------"
-	print len(train_sentences)
-	matrix = get_feature_values(train_sentences, features, True, train_labels)
-	
-	print "-------------Got all train features - start training-----------------"
-	
-	#print matrix[0]
-	#print train_labels
-	#clf = DecisionTreeClassifier(min_samples_leaf=1)
-	
-	
-	
-	#maxent = LogisticRegression(penalty='l2', dual=False, tol=0.0001, C=1.0, fit_intercept=True, intercept_scaling=1, class_weight=None, random_state=None)
-	#maxent.fit(matrix, train_labels)
-	#svm.SVC(C=1.0, cache_size=200, class_weight=None, coef0=0.0, degree=3,
-	#gamma=0.0, kernel='linear', max_iter=-1, probability=True, shrinking=True,
-	#tol=0.001, verbose=False)
-	
-	print "------------------------Finished training-----------------"
-	
-	dev_sentences, dev_labels = get_dev_data()
-	
-	matrix_test = get_feature_values(dev_sentences, features, False)
-	
-	print "-------------Got all test features - make predictions-----------------"
-	
-	
-	
-	
-	clf = svm.SVC(kernel='linear', probability=True)
-	clf.fit(matrix, train_labels) 
-	
-	
-	results = clf.predict(matrix_test.todense())
-	#result_probs = clf.predict_proba(matrix_test)
-	#print results
-	evaluate(dev_sentences, results, dev_labels, "SVM", features, [])
-	
-	#print "-------------MaxEnt predictions-----------------"
-	
-	#results = maxent.predict(matrix_test)
-	#result_probs = maxent.predict_proba(matrix_test)
-	#print results
-	#evaluate(dev_sentences, results, dev_labels, "SVM", features, result_probs)
-	'''
+run_subset(train_sentences, train_labels, len(train_labels))
+
+'''
+features = get_features()
+train_sentences, train_labels = get_train_data()
+print "-------------Start getting train features----------------------------"
+print len(train_sentences)
+matrix = get_feature_values(train_sentences, features, True, train_labels)
+
+print "-------------Got all train features - start training-----------------"
+
+#print matrix[0]
+#print train_labels
+#clf = DecisionTreeClassifier(min_samples_leaf=1)
+
+
+
+#maxent = LogisticRegression(penalty='l2', dual=False, tol=0.0001, C=1.0, fit_intercept=True, intercept_scaling=1, class_weight=None, random_state=None)
+#maxent.fit(matrix, train_labels)
+#svm.SVC(C=1.0, cache_size=200, class_weight=None, coef0=0.0, degree=3,
+#gamma=0.0, kernel='linear', max_iter=-1, probability=True, shrinking=True,
+#tol=0.001, verbose=False)
+
+print "------------------------Finished training-----------------"
+
+dev_sentences, dev_labels = get_dev_data()
+
+matrix_test = get_feature_values(dev_sentences, features, False)
+
+print "-------------Got all test features - make predictions-----------------"
+
+
+
+
+clf = svm.SVC(kernel='linear', probability=True)
+clf.fit(matrix, train_labels) 
+
+
+results = clf.predict(matrix_test.todense())
+#result_probs = clf.predict_proba(matrix_test)
+#print results
+evaluate(dev_sentences, results, dev_labels, "SVM", features, [])
+
+#print "-------------MaxEnt predictions-----------------"
+
+#results = maxent.predict(matrix_test)
+#result_probs = maxent.predict_proba(matrix_test)
+#print results
+#evaluate(dev_sentences, results, dev_labels, "SVM", features, result_probs)
+'''
