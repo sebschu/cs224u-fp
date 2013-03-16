@@ -434,7 +434,7 @@ def get_precision_recall(sentences, labels, predictions, probs, threshold):
 			for y in you_are:
 				if (sentence.startswith(y)):
 					forcePositive = True
-			if not forcePositive and probs[i][1] > 0.15:
+			if not forcePositive and probs[i][1] > 0.4:
 				for w in feat.tokenize(sentence):
 					if w in badwords:
 						forcePositive = True
@@ -694,7 +694,7 @@ def run_subset(trainComments, trainLabels, sampleSize):
 
 	print "------------------------Finished training-----------------"
 
-	dev_comments, dev_labels = get_yt_data()
+	dev_comments, dev_labels = get_dev_data()
 	dev_sentences, dev_sentence_index, dev_sentence_counts = get_sentences(dev_comments)
 
 	matrix_test = get_feature_values(dev_sentences, features, False)
