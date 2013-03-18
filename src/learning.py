@@ -617,7 +617,7 @@ def get_features():
 	word_pair = WordPairFeature(get_bad_words(),youlist)
 	so_feature = SentimentOrientation(100)
 	word_part = WordPartFeature(get_bad_words(),bodylist)
-	feats.extend([word_pair,bag_words,bag_words2,me,cap,go_beginning])
+	feats.extend([word_pair,bag_words,bag_words2,me,go_beginning])
 	#feats.extend([word_pair,bag_words,bag_words2,bag_words3,bag_words5,bag_words6,bag_words7,me,cap,go_beginning])
 	#feats.extend([so_feature])
 	return feats

@@ -429,26 +429,27 @@ def get_precision_recall(sentences, labels, predictions, probs, threshold):
 	tp = fp = tn = fn = 0
 	for i in range(len(labels)):
 		sentence = feat.preprocess(sentences[i]).lower()
-		prediction = predictions[i]
-		if prediction == -1 and probs[i][1] > 0.3:
+		forcePositive = False
+		if probs[i][1] < threshold and probs[i][1] > 0.3:
 			for y in you_are:
 				if (sentence.startswith(y)):
-					prediction = 1
-			if prediction == -1 and probs[i][1] > 0.4:
-				for w in sentence.split():
+					forcePositive = True
+			if not forcePositive and probs[i][1] > 0.4:
+				for w in feat.tokenize(sentence):
 					if w in badwords:
-						prediction = 1
+						forcePositive = True
 						break
+		forcePositive = False
 		label = labels[i]
 		if label == 1:
-			if probs[i][1] >= threshold:
+			if forcePositive or probs[i][1] >= threshold:
 				tp += 1
 			else:
 				#if probs[i][1] > 0.3:
 				#print "FN (" + str(probs[i][1]) + "): " + sentence
 				fn += 1
 		else:
-			if probs[i][1] < threshold:
+			if not forcePositive and probs[i][1] < threshold:
 				tn += 1
 			else:
 				#if probs[i][0] > 0.3:
@@ -517,8 +518,8 @@ def evaluate(sentences, predictions, labels, name, features, probs):
 
 	if name == "baseline": return
 	print "------Results for " + name + " model------------"
-	i = 0.0
-	while i <= 1.0:
+	i = 0.5
+	while i <= 0.5:
 		print "------Threshold: " + str(i) + "------------"
 		precision, recall = get_precision_recall(sentences, labels, predictions, probs, i)
 		print "precision: " + str(precision)
@@ -654,8 +655,8 @@ def run_subset(trainSentences, trainLabels, sampleSize):
 run_baseline()
 
 train_sentences, train_labels = get_train_data()
-#for i in range(500,len(train_labels), 500):
-#	run_subset(train_sentences, train_labels, i)
+for i in range(500,len(train_labels), 500):
+	run_subset(train_sentences, train_labels, i)
 
 run_subset(train_sentences, train_labels, len(train_labels))
 
